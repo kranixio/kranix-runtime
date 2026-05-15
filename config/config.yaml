@@ -1,0 +1,18 @@
+runtime:
+  default_backend: kubernetes    # docker | kubernetes | podman | compose
+
+docker:
+  host: "unix:///var/run/docker.sock"
+  api_version: "1.45"
+
+kubernetes:
+  kubeconfig: ""                  # empty = in-cluster config
+  context: ""                     # empty = current context
+  default_namespace: "default"
+
+podman:
+  socket: "unix:///run/user/1000/podman/podman.sock"
+
+remote:
+  ssh_key_path: "~/.ssh/id_rsa"
+  known_hosts_path: "~/.ssh/known_hosts"
