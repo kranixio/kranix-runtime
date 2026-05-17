@@ -35,9 +35,9 @@ kranix-core  ──►  kranix-runtime  ──►  Docker API
 |---|---|---|
 | Docker (local) | Stable | Via Docker Engine API |
 | Kubernetes | Stable | Via `client-go` |
-| Podman | Beta | Via Podman socket API |
-| Docker Compose | Beta | Compose v2 spec |
-| Remote node (SSH) | Alpha | SSH + Docker on remote host |
+| Podman | Stable | Rootless, daemonless runtime fully supported |
+| Docker Compose | Stable | Compose v2 and v1 support |
+| Remote node (SSH) | Beta | Agentless SSH connections to bare metal servers |
 | Edge node agent | Alpha | Lightweight agent for remote nodes |
 
 ---
@@ -316,6 +316,32 @@ metrics:
 - Storage metrics (I/O, disk usage)
 - Configurable collection intervals
 - Metrics endpoint for scraping
+
+### Stabilized Drivers
+
+**Podman Driver (Stable)**
+- Full rootless mode support with automatic detection
+- Daemonless architecture by design
+- Automatic socket path resolution for rootless and system modes
+- GPU resource support for NVIDIA GPUs
+- Resource limits (CPU, memory)
+- Port mapping
+
+**Docker Compose Driver (Stable)**
+- Automatic detection of Docker Compose v2 (`docker compose`) and v1 (`docker-compose`)
+- Full stack management (up, down, restart, ps)
+- Project-based isolation
+- Volume and orphan cleanup on destroy
+- Logs streaming with tail support
+- Service status tracking
+
+**Remote SSH Backend (Beta)**
+- Agentless SSH connections to bare metal servers
+- Automatic runtime detection (Docker or Podman) on remote hosts
+- Secure SSH with known_hosts verification
+- GPU and resource support on remote hosts
+- Auto-connect on deploy
+- Runtime-agnostic command execution
 
 ---
 
