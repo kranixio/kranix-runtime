@@ -93,6 +93,10 @@ kranix-runtime/
 │   │   └── lifecycle.go
 │   ├── edge/                    # Edge node agent
 │   │   └── agent.go
+│   ├── cache/                   # Image caching layer
+│   │   └── image.go
+│   ├── metrics/                 # Resource usage metrics collector
+│   │   └── collector.go
 │   └── registry/                # Driver registry — maps backend name to driver
 ├── pkg/
 │   └── imageutil/               # Image pull, tag, push helpers
@@ -263,6 +267,55 @@ edge_agent:
 - Workload deployment and management on edge nodes
 - Resource discovery and reporting
 - Support for GPU-equipped edge nodes
+
+### Image Caching Layer
+
+Accelerate image pulls by caching images across nodes:
+
+**Image Cache Configuration:**
+```yaml
+image_cache:
+  enabled: true
+  cache_size_gb: 100
+  max_cached_images: 50
+  ttl: "168h"                     # 7 days
+  prepull_images:
+    - nginx:latest
+    - postgres:14
+  registry_mirrors:
+    - https://mirror.gcr.io
+```
+
+**Features:**
+- Local image caching to reduce registry pull times
+- Configurable cache size and image count limits
+- TTL-based expiration with automatic cleanup
+- Prepull frequently used images on node startup
+- Registry mirror support for faster pulls
+- Cache hit rate tracking
+
+### Resource Usage Metrics
+
+Expose CPU, memory, GPU, network, and storage metrics per workload to kranix-core:
+
+**Metrics Configuration:**
+```yaml
+metrics:
+  enabled: true
+  collection_interval: "30s"
+  retention_period: "24h"
+  expose_endpoint: true
+  metrics_port: 9090
+```
+
+**Features:**
+- CPU usage (cores and percentage)
+- Memory usage (bytes and percentage)
+- GPU metrics (utilization, memory, temperature, power)
+- Network metrics (throughput, packets, errors)
+- Storage metrics (I/O, disk usage)
+- Configurable collection intervals
+- Metrics endpoint for scraping
 
 ---
 

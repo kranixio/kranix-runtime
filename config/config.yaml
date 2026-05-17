@@ -41,3 +41,18 @@ edge_agent:
   port: 50052                     # gRPC port for edge agent
   heartbeat_interval: "30s"       # Heartbeat interval to control plane
   auth_token: ""                  # Authentication token for control plane
+
+image_cache:
+  enabled: false                  # Enable image caching layer
+  cache_size_gb: 100              # Maximum cache size in GB
+  max_cached_images: 50           # Maximum number of images to cache
+  ttl: "168h"                     # Time-to-live for cached images (7 days)
+  prepull_images: []              # Images to prepull on node startup
+  registry_mirrors: []            # Registry mirror URLs for faster pulls
+
+metrics:
+  enabled: true                   # Enable resource usage metrics collection
+  collection_interval: "30s"      # Metrics collection interval
+  retention_period: "24h"         # How long to retain metrics
+  expose_endpoint: true           # Expose metrics endpoint
+  metrics_port: 9090              # Port for metrics endpoint

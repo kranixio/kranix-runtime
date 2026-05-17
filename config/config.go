@@ -15,6 +15,8 @@ type Config struct {
 	GPU        GPUConfig        `yaml:"gpu"`
 	Ephemeral  EphemeralConfig  `yaml:"ephemeral"`
 	EdgeAgent  EdgeAgentConfig  `yaml:"edge_agent"`
+	ImageCache ImageCacheConfig `yaml:"image_cache"`
+	Metrics    MetricsConfig    `yaml:"metrics"`
 }
 
 type RuntimeConfig struct {
@@ -67,6 +69,23 @@ type EdgeAgentConfig struct {
 	Port              int32  `yaml:"port"`
 	HeartbeatInterval string `yaml:"heartbeat_interval"` // e.g., "30s"
 	AuthToken         string `yaml:"auth_token,omitempty"`
+}
+
+type ImageCacheConfig struct {
+	Enabled         bool     `yaml:"enabled"`
+	CacheSizeGB     int32    `yaml:"cache_size_gb"`
+	MaxCachedImages int32    `yaml:"max_cached_images"`
+	TTL             string   `yaml:"ttl"` // e.g., "168h"
+	PrepullImages   []string `yaml:"prepull_images"`
+	RegistryMirrors []string `yaml:"registry_mirrors"`
+}
+
+type MetricsConfig struct {
+	Enabled            bool   `yaml:"enabled"`
+	CollectionInterval string `yaml:"collection_interval"` // e.g., "30s"`
+	RetentionPeriod    string `yaml:"retention_period"`    // e.g., "24h"
+	ExposeEndpoint     bool   `yaml:"expose_endpoint"`
+	MetricsPort        int32  `yaml:"metrics_port"`
 }
 
 func Load(path string) (*Config, error) {
@@ -127,6 +146,21 @@ func DefaultConfig() *Config {
 			Enabled:           false,
 			Port:              50052,
 			HeartbeatInterval: "30s",
+		},
+		ImageCache: ImageCacheConfig{
+			Enabled:         false,
+			CacheSizeGB:     100,
+			MaxCachedImages: 50,
+			TTL:             "168h",
+			PrepullImages:   []string{},
+			RegistryMirrors: []string{},
+		},
+		Metrics: MetricsConfig{
+			Enabled:            true,
+			CollectionInterval: "30s",
+			RetentionPeriod:    "24h",
+			ExposeEndpoint:     true,
+			MetricsPort:        9090,
 		},
 	}
 }
