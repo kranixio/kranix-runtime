@@ -11,6 +11,7 @@ import (
 	"github.com/docker/docker/client"
 	kraneTypes "github.com/kranix-io/kranix-packages/types"
 	"github.com/kranix-io/kranix-runtime/config"
+	"github.com/kranix-io/kranix-runtime/internal/gpu"
 )
 
 type Driver struct {
@@ -58,6 +59,23 @@ func (d *Driver) Deploy(ctx context.Context, spec *kraneTypes.WorkloadSpec) (*kr
 		RestartPolicy: container.RestartPolicy{
 			Name: "unless-stopped",
 		},
+	}
+
+	// Add GPU device requests if specified
+	if spec.Resources.GPU != nil {
+		deviceRequests, err := gpu.BuildDockerDeviceRequests(spec.Resources.GPU)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build GPU device requests: %w", err)
+		}
+		// Note: Docker API for device requests requires specific struct
+		// This is a simplified version - full implementation would use container.DeviceRequest
+		for _, dev := range deviceRequests {
+			hostConfig.DeviceRequests = append(hostConfig.DeviceRequests, container.DeviceRequest{
+				Driver:       dev["Driver"],
+				DeviceIDs:    []string{dev["DeviceIDs"]},
+				Capabilities: [][]string{{"gpu"}},
+			})
+		}
 	}
 
 	resp, err := d.cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, spec.Name)

@@ -12,6 +12,9 @@ type Config struct {
 	Kubernetes KubernetesConfig `yaml:"kubernetes"`
 	Podman     PodmanConfig     `yaml:"podman"`
 	Remote     RemoteConfig     `yaml:"remote"`
+	GPU        GPUConfig        `yaml:"gpu"`
+	Ephemeral  EphemeralConfig  `yaml:"ephemeral"`
+	EdgeAgent  EdgeAgentConfig  `yaml:"edge_agent"`
 }
 
 type RuntimeConfig struct {
@@ -24,9 +27,9 @@ type DockerConfig struct {
 }
 
 type KubernetesConfig struct {
-	Kubeconfig        string `yaml:"kubeconfig"`
-	Context           string `yaml:"context"`
-	DefaultNamespace  string `yaml:"default_namespace"`
+	Kubeconfig       string `yaml:"kubeconfig"`
+	Context          string `yaml:"context"`
+	DefaultNamespace string `yaml:"default_namespace"`
 }
 
 type PodmanConfig struct {
@@ -36,6 +39,34 @@ type PodmanConfig struct {
 type RemoteConfig struct {
 	SSHKeyPath     string `yaml:"ssh_key_path"`
 	KnownHostsPath string `yaml:"known_hosts_path"`
+}
+
+type GPUConfig struct {
+	Enabled          bool   `yaml:"enabled"`
+	DefaultVendor    string `yaml:"default_vendor"` // nvidia | amd
+	NvidiaDevicePath string `yaml:"nvidia_device_path,omitempty"`
+	AMDDevicePath    string `yaml:"amd_device_path,omitempty"`
+}
+
+type EphemeralConfig struct {
+	Enabled         bool   `yaml:"enabled"`
+	DefaultTTL      string `yaml:"default_ttl"` // e.g., "2h"
+	MaxEnvironments int32  `yaml:"max_environments"`
+	NamespacePrefix string `yaml:"namespace_prefix"`
+	AutoTeardown    bool   `yaml:"auto_teardown"`
+	TeardownOnMerge bool   `yaml:"teardown_on_merge"`
+	TeardownOnClose bool   `yaml:"teardown_on_close"`
+	CleanupInterval string `yaml:"cleanup_interval"` // e.g., "5m"
+}
+
+type EdgeAgentConfig struct {
+	Enabled           bool   `yaml:"enabled"`
+	NodeID            string `yaml:"node_id,omitempty"`
+	NodeName          string `yaml:"node_name,omitempty"`
+	IPAddress         string `yaml:"ip_address,omitempty"`
+	Port              int32  `yaml:"port"`
+	HeartbeatInterval string `yaml:"heartbeat_interval"` // e.g., "30s"
+	AuthToken         string `yaml:"auth_token,omitempty"`
 }
 
 func Load(path string) (*Config, error) {
@@ -75,6 +106,27 @@ func DefaultConfig() *Config {
 		Remote: RemoteConfig{
 			SSHKeyPath:     "~/.ssh/id_rsa",
 			KnownHostsPath: "~/.ssh/known_hosts",
+		},
+		GPU: GPUConfig{
+			Enabled:          false,
+			DefaultVendor:    "nvidia",
+			NvidiaDevicePath: "/dev/nvidia0",
+			AMDDevicePath:    "/dev/kfd",
+		},
+		Ephemeral: EphemeralConfig{
+			Enabled:         false,
+			DefaultTTL:      "2h",
+			MaxEnvironments: 10,
+			NamespacePrefix: "ephem-",
+			AutoTeardown:    true,
+			TeardownOnMerge: true,
+			TeardownOnClose: true,
+			CleanupInterval: "5m",
+		},
+		EdgeAgent: EdgeAgentConfig{
+			Enabled:           false,
+			Port:              50052,
+			HeartbeatInterval: "30s",
 		},
 	}
 }

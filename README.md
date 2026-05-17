@@ -38,6 +38,7 @@ kranix-core  ──►  kranix-runtime  ──►  Docker API
 | Podman | Beta | Via Podman socket API |
 | Docker Compose | Beta | Compose v2 spec |
 | Remote node (SSH) | Alpha | SSH + Docker on remote host |
+| Edge node agent | Alpha | Lightweight agent for remote nodes |
 
 ---
 
@@ -86,6 +87,12 @@ kranix-runtime/
 │   ├── podman/                  # Podman driver
 │   ├── compose/                 # Docker Compose driver
 │   ├── remote/                  # Remote node driver (SSH)
+│   ├── gpu/                     # GPU scheduling utilities
+│   │   └── gpu.go
+│   ├── ephemeral/               # Ephemeral environment lifecycle
+│   │   └── lifecycle.go
+│   ├── edge/                    # Edge node agent
+│   │   └── agent.go
 │   └── registry/                # Driver registry — maps backend name to driver
 ├── pkg/
 │   └── imageutil/               # Image pull, tag, push helpers
@@ -154,7 +161,108 @@ podman:
 remote:
   ssh_key_path: "~/.ssh/id_rsa"
   known_hosts_path: "~/.ssh/known_hosts"
+
+gpu:
+  enabled: false                  # Enable GPU support
+  default_vendor: "nvidia"        # nvidia | amd
+  nvidia_device_path: "/dev/nvidia0"
+  amd_device_path: "/dev/kfd"
+
+ephemeral:
+  enabled: false                  # Enable ephemeral environment lifecycle
+  default_ttl: "2h"               # Default time-to-live for environments
+  max_environments: 10            # Maximum concurrent ephemeral environments
+  namespace_prefix: "ephem-"      # Prefix for ephemeral namespaces
+  auto_teardown: true             # Automatically teardown expired environments
+  teardown_on_merge: true         # Teardown when PR is merged
+  teardown_on_close: true         # Teardown when PR is closed
+  cleanup_interval: "5m"          # Interval for cleanup checks
+
+edge_agent:
+  enabled: false                  # Enable edge node agent
+  node_id: ""                     # Auto-generated if empty
+  node_name: ""                   # Auto-generated if empty
+  ip_address: ""                  # Auto-detected if empty
+  port: 50052                     # gRPC port for edge agent
+  heartbeat_interval: "30s"       # Heartbeat interval to control plane
+  auth_token: ""                  # Authentication token for control plane
 ```
+
+---
+
+## New Features
+
+### GPU Workload Scheduling
+
+kranix-runtime now supports GPU workload scheduling for both NVIDIA and AMD devices. The GPU support is integrated into both Docker and Kubernetes drivers:
+
+**GPU Configuration:**
+```yaml
+gpu:
+  enabled: true
+  default_vendor: "nvidia"  # or "amd"
+```
+
+**Workload Spec with GPU:**
+```yaml
+resources:
+  gpu:
+    vendor: "nvidia"
+    count: 2
+    type: "A100"
+    memory: "40Gi"
+```
+
+**Supported GPU Vendors:**
+- NVIDIA: Uses `nvidia.com/gpu` resource type in Kubernetes and Docker device requests
+- AMD: Uses `amd.com/gpu` resource type in Kubernetes and AMDGPU device requests
+
+### Ephemeral Environment Lifecycle
+
+Automatically create and teardown ephemeral environments per PR or branch:
+
+**Ephemeral Configuration:**
+```yaml
+ephemeral:
+  enabled: true
+  default_ttl: "2h"
+  max_environments: 10
+  namespace_prefix: "ephem-"
+  auto_teardown: true
+  teardown_on_merge: true
+  teardown_on_close: true
+  cleanup_interval: "5m"
+```
+
+**Features:**
+- Automatic environment creation on PR/branch triggers
+- TTL-based expiration with configurable cleanup intervals
+- Auto-teardown on PR merge or close events
+- Max concurrent environment limits
+- Namespace isolation with configurable prefixes
+
+### Edge Node Agent
+
+Lightweight binary that connects remote nodes to the control plane:
+
+**Edge Agent Configuration:**
+```yaml
+edge_agent:
+  enabled: true
+  node_id: "edge-node-001"
+  node_name: "production-edge"
+  ip_address: "192.168.1.100"
+  port: 50052
+  heartbeat_interval: "30s"
+  auth_token: "secure-token"
+```
+
+**Features:**
+- gRPC-based communication with control plane
+- Automatic node registration and heartbeat
+- Workload deployment and management on edge nodes
+- Resource discovery and reporting
+- Support for GPU-equipped edge nodes
 
 ---
 

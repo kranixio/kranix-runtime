@@ -16,3 +16,28 @@ podman:
 remote:
   ssh_key_path: "~/.ssh/id_rsa"
   known_hosts_path: "~/.ssh/known_hosts"
+
+gpu:
+  enabled: false                  # Enable GPU support
+  default_vendor: "nvidia"        # nvidia | amd
+  nvidia_device_path: "/dev/nvidia0"
+  amd_device_path: "/dev/kfd"
+
+ephemeral:
+  enabled: false                  # Enable ephemeral environment lifecycle
+  default_ttl: "2h"               # Default time-to-live for environments
+  max_environments: 10            # Maximum concurrent ephemeral environments
+  namespace_prefix: "ephem-"      # Prefix for ephemeral namespaces
+  auto_teardown: true             # Automatically teardown expired environments
+  teardown_on_merge: true         # Teardown when PR is merged
+  teardown_on_close: true         # Teardown when PR is closed
+  cleanup_interval: "5m"          # Interval for cleanup checks
+
+edge_agent:
+  enabled: false                  # Enable edge node agent
+  node_id: ""                     # Auto-generated if empty
+  node_name: ""                   # Auto-generated if empty
+  ip_address: ""                  # Auto-detected if empty
+  port: 50052                     # gRPC port for edge agent
+  heartbeat_interval: "30s"       # Heartbeat interval to control plane
+  auth_token: ""                  # Authentication token for control plane

@@ -6,9 +6,11 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kranix-io/kranix-packages/types"
+	"github.com/kranix-io/kranix-runtime/internal/gpu"
 )
 
 func (d *Driver) createDeployment(ctx context.Context, spec *types.WorkloadSpec) (*appsv1.Deployment, error) {
@@ -42,6 +44,34 @@ func (d *Driver) createDeployment(ctx context.Context, spec *types.WorkloadSpec)
 			})
 		}
 		container.Ports = ports
+	}
+
+	// Add resource requirements
+	container.Resources.Requests = make(corev1.ResourceList)
+	container.Resources.Limits = make(corev1.ResourceList)
+
+	if spec.Resources.CPURequest != "" {
+		container.Resources.Requests[corev1.ResourceCPU] = resource.MustParse(spec.Resources.CPURequest)
+	}
+	if spec.Resources.CPULimit != "" {
+		container.Resources.Limits[corev1.ResourceCPU] = resource.MustParse(spec.Resources.CPULimit)
+	}
+	if spec.Resources.MemoryRequest != "" {
+		container.Resources.Requests[corev1.ResourceMemory] = resource.MustParse(spec.Resources.MemoryRequest)
+	}
+	if spec.Resources.MemoryLimit != "" {
+		container.Resources.Limits[corev1.ResourceMemory] = resource.MustParse(spec.Resources.MemoryLimit)
+	}
+
+	// Add GPU resources
+	if spec.Resources.GPU != nil {
+		gpuResources, err := gpu.BuildKubernetesResourceRequirements(spec.Resources.GPU)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build GPU resource requirements: %w", err)
+		}
+		for resourceName, quantity := range gpuResources {
+			container.Resources.Limits[corev1.ResourceName(resourceName)] = resource.MustParse(quantity)
+		}
 	}
 
 	// Create deployment
