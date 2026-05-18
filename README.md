@@ -10,7 +10,7 @@
 
 - Implements the `RuntimeDriver` interface for each supported backend
 - Manages local Docker containers, Compose stacks, and image lifecycle
-- Talks directly to the Kubernetes API server for cluster workloads
+- Talks directly to the Kubernetes API server for cluster workloads (**priority classes**, **spot/preemptible** hints, **cross-namespace NetworkPolicy**, **CronJob** vs **Deployment**)
 - Supports remote node connections (SSH-based or agent-based)
 - Handles ephemeral dev environments and local cloud simulation
 - Reports observed state back to `kranix-core` for reconciliation
@@ -34,11 +34,22 @@ kranix-core  ──►  kranix-runtime  ──►  Docker API
 | Backend | Status | Notes |
 |---|---|---|
 | Docker (local) | Stable | Via Docker Engine API |
-| Kubernetes | Stable | Via `client-go` |
+| Kubernetes | Stable | Via `client-go` — Deployments (**or CronJobs** when `cronSchedule` is active), PriorityClass mapping, spot tolerations, optional cross-namespace NetworkPolicy |
 | Podman | Stable | Rootless, daemonless runtime fully supported |
 | Docker Compose | Stable | Compose v2 and v1 support |
 | Remote node (SSH) | Beta | Agentless SSH connections to bare metal servers |
 | Edge node agent | Alpha | Lightweight agent for remote nodes |
+
+### Kubernetes placement & networking details
+
+See **`internal/kubernetes/scheduling.go`**, **`networkpolicy.go`**, **`cronjob.go`**, and **`workload_pod.go`**:
+
+| Concern | Behavior |
+|---------|----------|
+| **Cron** | Active **`spec.cronSchedule`** → **`batch/v1` CronJob** (`timeZone`, parallelism from **`replicas`**, **`concurrencyPolicy`**); otherwise **`Deployment`**. Lifecycle APIs resolve CronJob vs Deployment by name. |
+| **Priority / preemption** | **`scheduling.workloadPriority`** maps to **`priorityClassName`** **`kranix-{critical\|high\|normal\|low}`**, with **`-np`** suffix when **`preemptionEnabled`** is **false**. **`priorityClassName`** overrides. Cluster admins must define matching **`PriorityClass`** objects for real preemption semantics. |
+| **Spot / node loss** | **`spot.enabled`** adds tolerations; **`rescheduleOnNodeTermination`** adds **`NoExecute`** tolerations on **`node.kubernetes.io/not-ready`** / **`unreachable`** (bounded eviction wait) plus shorter **`terminationGracePeriodSeconds`** on the pod spec. |
+| **Cross-namespace traffic** | When **`crossNamespaceTraffic.enabled`**, applies a **`NetworkPolicy`** restricting ingress/egress to same-namespace and explicitly allowed namespaces (labels **`kubernetes.io/metadata.name`**), with optional kube-dns and internet egress flags. |
 
 ---
 
@@ -79,9 +90,13 @@ kranix-runtime/
 │   │   ├── deploy.go
 │   │   ├── logs.go
 │   │   └── image.go
-│   ├── kubernetes/              # Kubernetes driver (client-go)
+│   ├── kubernetes/              # Kubernetes driver (Deployment or CronJob)
 │   │   ├── driver.go
 │   │   ├── deploy.go
+│   │   ├── workload_pod.go     # Shared pod spec for Deployments and CronJobs
+│   │   ├── cronjob.go          # CronJob path when cron schedule is enabled
+│   │   ├── networkpolicy.go   # Cross-namespace NetworkPolicy helpers
+│   │   ├── scheduling.go      # PriorityClass + spot toleration merge
 │   │   ├── pods.go
 │   │   └── watch.go
 │   ├── podman/                  # Podman driver

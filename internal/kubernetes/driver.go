@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -60,7 +63,13 @@ func New(cfg *config.Config) (types.RuntimeDriver, error) {
 }
 
 func (d *Driver) Deploy(ctx context.Context, spec *types.WorkloadSpec) (*types.WorkloadStatus, error) {
-	// Create deployment via deploy.go
+	if cronScheduleActive(spec) {
+		if _, err := d.createCronJob(ctx, spec); err != nil {
+			return nil, err
+		}
+		return d.GetStatus(ctx, spec.Name)
+	}
+
 	deployment, err := d.createDeployment(ctx, spec)
 	if err != nil {
 		return nil, err
@@ -70,14 +79,35 @@ func (d *Driver) Deploy(ctx context.Context, spec *types.WorkloadSpec) (*types.W
 }
 
 func (d *Driver) Destroy(ctx context.Context, workloadID string) error {
+	namespace := d.namespace
+	err := d.deleteCronJob(ctx, workloadID, namespace)
+	if err == nil || !apierrors.IsNotFound(err) {
+		return err
+	}
 	return d.deleteDeployment(ctx, workloadID)
 }
 
 func (d *Driver) Restart(ctx context.Context, workloadID string) error {
+	namespace := d.namespace
+	cj, err := d.clientset.BatchV1().CronJobs(namespace).Get(ctx, workloadID, metav1.GetOptions{})
+	if err == nil {
+		return d.restartCronJob(ctx, cj)
+	}
+	if !apierrors.IsNotFound(err) {
+		return err
+	}
 	return d.restartDeployment(ctx, workloadID)
 }
 
 func (d *Driver) GetStatus(ctx context.Context, workloadID string) (*types.WorkloadStatus, error) {
+	namespace := d.namespace
+	cj, err := d.clientset.BatchV1().CronJobs(namespace).Get(ctx, workloadID, metav1.GetOptions{})
+	if err == nil {
+		return d.cronJobWorkloadStatus(ctx, cj)
+	}
+	if !apierrors.IsNotFound(err) {
+		return nil, err
+	}
 	return d.getDeploymentStatus(ctx, workloadID)
 }
 
