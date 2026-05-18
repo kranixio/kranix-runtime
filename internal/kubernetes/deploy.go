@@ -74,6 +74,30 @@ func (d *Driver) createDeployment(ctx context.Context, spec *types.WorkloadSpec)
 		}
 	}
 
+	// Scheduling, spot, and preemptible reschedule hints
+	podSpec := corev1.PodSpec{
+		Containers: []corev1.Container{container},
+	}
+	if pc := resolvePriorityClassName(spec.Scheduling); pc != "" {
+		podSpec.PriorityClassName = pc
+	}
+	if spec.Scheduling != nil {
+		if len(spec.Scheduling.NodeSelectors) > 0 {
+			podSpec.NodeSelector = copyStringMap(spec.Scheduling.NodeSelectors)
+		}
+		if aff := convertAffinityConfig(spec.Scheduling.Affinity); aff != nil {
+			podSpec.Affinity = aff
+		}
+	}
+	tols := mergeSpotTolerations(spec)
+	if len(tols) > 0 {
+		podSpec.Tolerations = convertTolerations(tols)
+	}
+	if spec.Scheduling != nil && spec.Scheduling.Spot != nil && spec.Scheduling.Spot.Enabled && spec.Scheduling.Spot.RescheduleOnNodeTermination {
+		sec := int64(30)
+		podSpec.TerminationGracePeriodSeconds = &sec
+	}
+
 	// Create deployment
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -97,14 +121,21 @@ func (d *Driver) createDeployment(ctx context.Context, spec *types.WorkloadSpec)
 						"app": spec.Name,
 					},
 				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{container},
-				},
+				Spec: podSpec,
 			},
 		},
 	}
 
-	return d.clientset.AppsV1().Deployments(namespace).Create(ctx, deployment, metav1.CreateOptions{})
+	dep, err := d.clientset.AppsV1().Deployments(namespace).Create(ctx, deployment, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ensureCrossNamespaceNetworkPolicy(ctx, d.clientset, namespace, spec.Name, dep.Spec.Template.Labels, spec.CrossNamespaceTraffic); err != nil {
+		return nil, err
+	}
+
+	return dep, nil
 }
 
 func (d *Driver) deleteDeployment(ctx context.Context, name string) error {
