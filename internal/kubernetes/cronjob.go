@@ -54,14 +54,16 @@ func (d *Driver) createCronJob(ctx context.Context, spec *types.WorkloadSpec) (*
 	historyLimit := int32(3)
 	backoff := int32(6)
 
+	podLabels := mergeWorkloadLabels(spec, map[string]string{
+		"app":        spec.Name,
+		"managed-by": "kranix",
+	})
+
 	cronJob := &batchv1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      spec.Name,
 			Namespace: namespace,
-			Labels: map[string]string{
-				"app":        spec.Name,
-				"managed-by": "kranix",
-			},
+			Labels:    podLabels,
 		},
 		Spec: batchv1.CronJobSpec{
 			Schedule:                 strings.TrimSpace(spec.CronSchedule.Schedule),
@@ -78,7 +80,7 @@ func (d *Driver) createCronJob(ctx context.Context, spec *types.WorkloadSpec) (*
 					BackoffLimit: &backoff,
 					Template: corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{"app": spec.Name},
+							Labels: podLabels,
 						},
 						Spec: podSpec,
 					},

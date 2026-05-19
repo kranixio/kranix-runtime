@@ -27,15 +27,17 @@ func (d *Driver) createDeployment(ctx context.Context, spec *types.WorkloadSpec)
 		return nil, err
 	}
 
+	podLabels := mergeWorkloadLabels(spec, map[string]string{
+		"app":        spec.Name,
+		"managed-by": "kranix",
+	})
+
 	// Create deployment
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      spec.Name,
 			Namespace: namespace,
-			Labels: map[string]string{
-				"app":        spec.Name,
-				"managed-by": "kranix",
-			},
+			Labels:    podLabels,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: int32Ptr(spec.Replicas),
@@ -46,9 +48,7 @@ func (d *Driver) createDeployment(ctx context.Context, spec *types.WorkloadSpec)
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app": spec.Name,
-					},
+					Labels: podLabels,
 				},
 				Spec: podSpec,
 			},
