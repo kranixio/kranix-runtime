@@ -11,6 +11,13 @@ func mergeWorkloadLabels(spec *types.WorkloadSpec, base map[string]string) map[s
 	for k, v := range base {
 		out[k] = v
 	}
+	if spec != nil {
+		for k, v := range spec.Labels {
+			if strings.TrimSpace(k) != "" {
+				out[k] = strings.TrimSpace(v)
+			}
+		}
+	}
 	if spec == nil || spec.Tags == nil {
 		return out
 	}
