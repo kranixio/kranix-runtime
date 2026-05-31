@@ -56,3 +56,15 @@ metrics:
   retention_period: "24h"         # How long to retain metrics
   expose_endpoint: true           # Expose metrics endpoint
   metrics_port: 9090              # Port for metrics endpoint
+
+node_ops:
+  health_scoring:
+    enabled: true                 # Score backends/nodes 0-100 from latency and errors
+    latency_window: "5m"
+  drain:
+    enabled: true                 # Allow automatic node draining before maintenance
+    default_grace_period_seconds: 30
+    ignore_daemonsets: true
+  multi_arch:
+    enabled: true                 # Route workloads using scheduling.architecture / image hints
+    default_arch: "amd64"

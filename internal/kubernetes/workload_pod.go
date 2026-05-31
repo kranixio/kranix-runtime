@@ -7,6 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/kranix-io/kranix-packages/types"
+	"github.com/kranix-io/kranix-runtime/internal/arch"
 	"github.com/kranix-io/kranix-runtime/internal/gpu"
 )
 
@@ -62,6 +63,8 @@ func (d *Driver) workloadContainer(spec *types.WorkloadSpec) (corev1.Container, 
 }
 
 func (d *Driver) workloadPodSpec(spec *types.WorkloadSpec) (corev1.PodSpec, error) {
+	arch.ApplyArchitectureScheduling(spec)
+
 	container, err := d.workloadContainer(spec)
 	if err != nil {
 		return corev1.PodSpec{}, err

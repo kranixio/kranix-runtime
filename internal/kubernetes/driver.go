@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,12 +14,14 @@ import (
 
 	"github.com/kranix-io/kranix-packages/types"
 	"github.com/kranix-io/kranix-runtime/config"
+	"github.com/kranix-io/kranix-runtime/internal/health"
 )
 
 type Driver struct {
 	clientset *kubernetes.Clientset
 	cfg       *config.Config
 	namespace string
+	tracker   *health.BackendTracker
 }
 
 func New(cfg *config.Config) (types.RuntimeDriver, error) {
@@ -59,6 +62,7 @@ func New(cfg *config.Config) (types.RuntimeDriver, error) {
 		clientset: clientset,
 		cfg:       cfg,
 		namespace: namespace,
+		tracker:   health.NewBackendTracker(5*time.Minute, 100),
 	}, nil
 }
 
@@ -123,7 +127,11 @@ func (d *Driver) StreamLogs(ctx context.Context, podID string, opts *types.LogOp
 }
 
 func (d *Driver) Ping(ctx context.Context) error {
+	start := time.Now()
 	_, err := d.clientset.ServerVersion()
+	if d.tracker != nil {
+		d.tracker.Record(float64(time.Since(start).Milliseconds()), err != nil)
+	}
 	return err
 }
 

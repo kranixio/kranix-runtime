@@ -41,6 +41,18 @@ func Get(name string, cfg *config.Config) (types.RuntimeDriver, error) {
 	return factory(cfg)
 }
 
+// GetNodeOperations returns node lifecycle APIs when the driver supports them.
+func GetNodeOperations(name string, cfg *config.Config) (types.NodeOperations, error) {
+	driver, err := Get(name, cfg)
+	if err != nil {
+		return nil, err
+	}
+	if ops, ok := driver.(types.NodeOperations); ok {
+		return ops, nil
+	}
+	return nil, fmt.Errorf("driver %q does not support node operations", name)
+}
+
 func List() []string {
 	mu.RLock()
 	defer mu.RUnlock()

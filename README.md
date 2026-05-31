@@ -14,6 +14,9 @@
 - Supports remote node connections (SSH-based or agent-based)
 - Handles ephemeral dev environments and local cloud simulation
 - Reports observed state back to `kranix-core` for reconciliation
+- **Runtime health scoring** — scores each backend and node 0–100 from latency and error rate
+- **Automatic node draining** — cordons nodes and evicts workloads before maintenance
+- **Multi-arch image support** — routes ARM vs x86 workloads to correct nodes via `kubernetes.io/arch`
 
 ---
 
@@ -50,6 +53,9 @@ See **`internal/kubernetes/scheduling.go`**, **`networkpolicy.go`**, **`cronjob.
 | **Priority / preemption** | **`scheduling.workloadPriority`** maps to **`priorityClassName`** **`kranix-{critical\|high\|normal\|low}`**, with **`-np`** suffix when **`preemptionEnabled`** is **false**. **`priorityClassName`** overrides. Cluster admins must define matching **`PriorityClass`** objects for real preemption semantics. |
 | **Spot / node loss** | **`spot.enabled`** adds tolerations; **`rescheduleOnNodeTermination`** adds **`NoExecute`** tolerations on **`node.kubernetes.io/not-ready`** / **`unreachable`** (bounded eviction wait) plus shorter **`terminationGracePeriodSeconds`** on the pod spec. |
 | **Cross-namespace traffic** | When **`crossNamespaceTraffic.enabled`**, applies a **`NetworkPolicy`** restricting ingress/egress to same-namespace and explicitly allowed namespaces (labels **`kubernetes.io/metadata.name`**), with optional kube-dns and internet egress flags. |
+| **Health scoring** | Backends tracked via **`internal/health/`** — latency + error rate → score 0–100. Kubernetes nodes scored from Ready/MemoryPressure/DiskPressure conditions. |
+| **Node draining** | **`NodeOperations.DrainNode`** cordons the node, applies **`kranix.io/drain`** taint, and evicts non-DaemonSet pods with configurable grace period. |
+| **Multi-arch routing** | **`scheduling.architecture`** or image tag hints (`arm64`, `amd64`) inject **`kubernetes.io/arch`** nodeSelector + required node affinity. Docker pulls use platform-specific image pulls. |
 
 ---
 
@@ -76,6 +82,18 @@ type RuntimeDriver interface {
 ```
 
 `kranix-core` selects the appropriate driver at runtime based on the workload's target backend field.
+
+Kubernetes drivers also implement **`types.NodeOperations`** for node health and drain:
+
+```go
+type NodeOperations interface {
+    ListBackendHealth(ctx context.Context) ([]BackendHealthReport, error)
+    ListNodeHealth(ctx context.Context) ([]NodeHealthReport, error)
+    DrainNode(ctx context.Context, req NodeDrainRequest) (*NodeDrainResult, error)
+}
+```
+
+Retrieve via `registry.GetNodeOperations("kubernetes", cfg)`.
 
 ---
 
