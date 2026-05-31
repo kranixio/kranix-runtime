@@ -85,3 +85,8 @@ volumes:
   default_storage_class: ""
   default_size: "1Gi"
   auto_cleanup_on_destroy: true
+
+migration:
+  enabled: true
+  ready_timeout: 5m
+  zero_downtime: true

@@ -8,6 +8,7 @@ import (
 	"github.com/kranix-io/kranix-runtime/internal/compose"
 	"github.com/kranix-io/kranix-runtime/internal/docker"
 	"github.com/kranix-io/kranix-runtime/internal/kubernetes"
+	"github.com/kranix-io/kranix-runtime/internal/migration"
 	"github.com/kranix-io/kranix-runtime/internal/podman"
 	"github.com/kranix-io/kranix-runtime/internal/remote"
 	"github.com/kranix-io/kranix-packages/types"
@@ -73,6 +74,13 @@ func GetExtendedOperations(name string, cfg *config.Config) (types.RuntimeExtend
 		return ops, nil
 	}
 	return nil, fmt.Errorf("driver %q does not support extended operations", name)
+}
+
+// GetMigrationOperations returns the cross-backend migration orchestrator.
+func GetMigrationOperations(cfg *config.Config) types.RuntimeMigrationOperations {
+	return migration.NewOrchestrator(cfg, func(name string) (types.RuntimeDriver, error) {
+		return Get(name, cfg)
+	})
 }
 
 func List() []string {

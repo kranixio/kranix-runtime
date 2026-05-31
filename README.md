@@ -21,6 +21,9 @@
 - **Network bandwidth throttling** — per-workload egress/ingress limits via pod annotations (Kubernetes CNI) or Docker labels
 - **Volume lifecycle management** — auto-create PVCs/Docker volumes on deploy, attach mounts, optional cleanup on destroy
 - **Runtime plugin system** — register custom backends via `plugin.Register()` without forking the repo
+- **Workload migration** — move running workloads between backends (docker ↔ kubernetes) with zero-downtime shadow cutover
+- **Node labels & selectors** — place workloads on nodes by region, zone, hardware profile, or custom labels
+- **Startup probe support** — distinct from liveness; blocks traffic until the app is truly ready
 
 ---
 
@@ -64,6 +67,9 @@ See **`internal/kubernetes/scheduling.go`**, **`networkpolicy.go`**, **`cronjob.
 | **Bandwidth throttling** | **`spec.networkBandwidth`** with **`enabled: true`** sets **`kubernetes.io/egress-bandwidth`** / **`ingress-bandwidth`** pod annotations (requires CNI bandwidth plugin) or Docker labels **`kranix.io/egress-bandwidth`**. |
 | **Volume lifecycle** | **`spec.volumes[]`** auto-provisions PVCs (K8s) or named volumes (Docker), mounts at **`mountPath`**, and optionally deletes on destroy when **`autoCleanup: true`** or **`volumes.auto_cleanup_on_destroy`** is set. |
 | **Runtime plugins** | Custom backends register via **`plugin.Register(Descriptor{...})`** in **`init()`**; enable in **`plugins.allow`** config. Built-ins: docker, kubernetes, podman, compose, remote. |
+| **Workload migration** | **`registry.GetMigrationOperations(cfg)`** deploys a shadow workload on the target backend, waits for readiness, cutovers, then destroys the source. |
+| **Node placement** | **`scheduling.nodePlacement`** maps **`region`** / **`zone`** to topology labels, **`hardwareType`** to **`kranix.io/hardware`**, and merges **`requiredLabels`** / weighted **`preferredLabels`**. |
+| **Startup probes** | **`spec.probes.startup`** sets Kubernetes **`startupProbe`** (blocks liveness/readiness until success). Docker uses **`Healthcheck.StartPeriod`** from startup timing. |
 
 ---
 
@@ -149,6 +155,43 @@ func init() {
 
 Enable in `config/config.yaml` under **`plugins.allow`**.
 
+Retrieve migration orchestrator via `registry.GetMigrationOperations(cfg)`.
+
+**Startup / liveness / readiness probes:**
+
+```yaml
+probes:
+  startup:
+    type: http
+    path: /ready
+    port: 8080
+    failureThreshold: 30
+    periodSeconds: 5
+  liveness:
+    type: http
+    path: /healthz
+    port: 8080
+  readiness:
+    type: tcp
+    port: 8080
+```
+
+**Node placement by region or hardware:**
+
+```yaml
+scheduling:
+  nodePlacement:
+    region: us-west-2
+    zone: us-west-2a
+    hardwareType: gpu-a100
+    requiredLabels:
+      kranix.io/tier: production
+    preferredLabels:
+      - key: kranix.io/cost-tier
+        value: spot
+        weight: 50
+```
+
 ---
 
 ## Project structure
@@ -168,6 +211,9 @@ kranix-runtime/
 │   ├── bandwidth/               # Egress/ingress limit annotations and labels
 │   ├── volume/                  # PVC and Docker volume lifecycle
 │   ├── plugin/                  # Runtime backend plugin registry
+│   ├── placement/               # Region, zone, hardware node label merge
+│   ├── probes/                  # Startup, liveness, readiness probe conversion
+│   ├── migration/               # Cross-backend zero-downtime migration
 │   ├── kubernetes/              # Kubernetes driver (Deployment or CronJob)
 │   │   ├── driver.go
 │   │   ├── deploy.go
@@ -304,14 +350,15 @@ volumes:
 node_ops:
   health_scoring:
     enabled: true
-    latency_window: "5m"
   drain:
     enabled: true
-    default_grace_period_seconds: 30
   multi_arch:
     enabled: true
-    default_arch: "amd64"
-```
+
+migration:
+  enabled: true
+  ready_timeout: 5m
+  zero_downtime: true
 
 ---
 
@@ -341,6 +388,20 @@ curl http://localhost:8080/api/v1/runtime/plugins
 ```
 
 Register custom backends with `plugin.Register()` and enable them in config — no fork required.
+
+### Workload migration, node placement, and startup probes
+
+**Migration** — move a workload between backends without downtime:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/workloads/my-app/migrate \
+  -H 'Content-Type: application/json' \
+  -d '{"targetBackend":"kubernetes","sourceBackend":"docker","zeroDowntime":true}'
+```
+
+**Node placement** — set `scheduling.nodePlacement.region`, `zone`, `hardwareType`, or custom `requiredLabels` on the workload spec.
+
+**Startup probes** — set `probes.startup` separately from `probes.liveness`; Kubernetes blocks liveness/readiness until startup succeeds.
 
 ### GPU Workload Scheduling
 

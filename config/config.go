@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -22,6 +23,13 @@ type Config struct {
 	Bandwidth  BandwidthConfig  `yaml:"bandwidth"`
 	Volumes    VolumesConfig    `yaml:"volumes"`
 	NodeOps    NodeOpsConfig    `yaml:"node_ops"`
+	Migration  MigrationConfig  `yaml:"migration"`
+}
+
+type MigrationConfig struct {
+	Enabled       bool          `yaml:"enabled"`
+	ReadyTimeout  time.Duration `yaml:"ready_timeout"`
+	ZeroDowntime  bool          `yaml:"zero_downtime"`
 }
 
 type PluginsConfig struct {

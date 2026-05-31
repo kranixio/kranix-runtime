@@ -15,6 +15,8 @@ import (
 	"github.com/kranix-io/kranix-runtime/internal/bandwidth"
 	"github.com/kranix-io/kranix-runtime/internal/checkpoint"
 	"github.com/kranix-io/kranix-runtime/internal/gpu"
+	"github.com/kranix-io/kranix-runtime/internal/placement"
+	"github.com/kranix-io/kranix-runtime/internal/probes"
 )
 
 type Driver struct {
@@ -43,6 +45,7 @@ func New(cfg *config.Config) (kraneTypes.RuntimeDriver, error) {
 }
 
 func (d *Driver) Deploy(ctx context.Context, spec *kraneTypes.WorkloadSpec) (*kraneTypes.WorkloadStatus, error) {
+	placement.ApplyNodePlacement(spec)
 	arch.ApplyArchitectureScheduling(spec)
 	if _, err := d.volMgr.Provision(ctx, spec); err != nil {
 		return nil, err
@@ -64,6 +67,7 @@ func (d *Driver) Deploy(ctx context.Context, spec *kraneTypes.WorkloadSpec) (*kr
 		Env:    env,
 		Labels: bandwidth.ApplyDockerLabels(spec),
 	}
+	probes.ApplyDockerHealthcheck(containerConfig, spec.Probes)
 
 	if spec.Command != "" {
 		containerConfig.Cmd = []string{spec.Command}

@@ -9,6 +9,8 @@ import (
 	"github.com/kranix-io/kranix-packages/types"
 	"github.com/kranix-io/kranix-runtime/internal/arch"
 	"github.com/kranix-io/kranix-runtime/internal/gpu"
+	"github.com/kranix-io/kranix-runtime/internal/placement"
+	"github.com/kranix-io/kranix-runtime/internal/probes"
 )
 
 func (d *Driver) workloadContainer(spec *types.WorkloadSpec) (corev1.Container, error) {
@@ -59,10 +61,13 @@ func (d *Driver) workloadContainer(spec *types.WorkloadSpec) (corev1.Container, 
 		}
 	}
 
+	probes.ApplyKubernetesProbes(&container, spec.Probes)
+
 	return container, nil
 }
 
 func (d *Driver) workloadPodSpec(spec *types.WorkloadSpec) (corev1.PodSpec, error) {
+	placement.ApplyNodePlacement(spec)
 	arch.ApplyArchitectureScheduling(spec)
 
 	container, err := d.workloadContainer(spec)
