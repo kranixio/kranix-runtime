@@ -29,6 +29,16 @@ func Register(name string, factory DriverFactory) {
 	drivers[name] = factory
 }
 
+// RegisterIfAbsent adds a driver factory only when the name is not already registered.
+func RegisterIfAbsent(name string, factory DriverFactory) {
+	mu.Lock()
+	defer mu.Unlock()
+	if _, exists := drivers[name]; exists {
+		return
+	}
+	drivers[name] = factory
+}
+
 func Get(name string, cfg *config.Config) (types.RuntimeDriver, error) {
 	mu.RLock()
 	factory, exists := drivers[name]
@@ -51,6 +61,18 @@ func GetNodeOperations(name string, cfg *config.Config) (types.NodeOperations, e
 		return ops, nil
 	}
 	return nil, fmt.Errorf("driver %q does not support node operations", name)
+}
+
+// GetExtendedOperations returns checkpoint/volume/bandwidth APIs when supported.
+func GetExtendedOperations(name string, cfg *config.Config) (types.RuntimeExtendedOperations, error) {
+	driver, err := Get(name, cfg)
+	if err != nil {
+		return nil, err
+	}
+	if ops, ok := driver.(types.RuntimeExtendedOperations); ok {
+		return ops, nil
+	}
+	return nil, fmt.Errorf("driver %q does not support extended operations", name)
 }
 
 func List() []string {

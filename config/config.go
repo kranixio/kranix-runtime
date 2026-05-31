@@ -17,6 +17,55 @@ type Config struct {
 	EdgeAgent  EdgeAgentConfig  `yaml:"edge_agent"`
 	ImageCache ImageCacheConfig `yaml:"image_cache"`
 	Metrics    MetricsConfig    `yaml:"metrics"`
+	Plugins    PluginsConfig    `yaml:"plugins"`
+	Checkpoint CheckpointConfig `yaml:"checkpoint"`
+	Bandwidth  BandwidthConfig  `yaml:"bandwidth"`
+	Volumes    VolumesConfig    `yaml:"volumes"`
+	NodeOps    NodeOpsConfig    `yaml:"node_ops"`
+}
+
+type PluginsConfig struct {
+	Enabled bool           `yaml:"enabled"`
+	Allow   []PluginConfig `yaml:"allow"`
+}
+
+type PluginConfig struct {
+	Name        string `yaml:"name"`
+	Module      string `yaml:"module"`
+	Description string `yaml:"description"`
+	Enabled     bool   `yaml:"enabled"`
+}
+
+type CheckpointConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+type BandwidthConfig struct {
+	Enabled           bool   `yaml:"enabled"`
+	DefaultEgressMbit string `yaml:"default_egress_mbit"`
+}
+
+type VolumesConfig struct {
+	Enabled              bool   `yaml:"enabled"`
+	DefaultStorageClass  string `yaml:"default_storage_class"`
+	DefaultSize          string `yaml:"default_size"`
+	AutoCleanupOnDestroy bool   `yaml:"auto_cleanup_on_destroy"`
+}
+
+type NodeOpsConfig struct {
+	HealthScoring struct {
+		Enabled       bool   `yaml:"enabled"`
+		LatencyWindow string `yaml:"latency_window"`
+	} `yaml:"health_scoring"`
+	Drain struct {
+		Enabled                   bool `yaml:"enabled"`
+		DefaultGracePeriodSeconds int  `yaml:"default_grace_period_seconds"`
+		IgnoreDaemonSets          bool `yaml:"ignore_daemonsets"`
+	} `yaml:"drain"`
+	MultiArch struct {
+		Enabled     bool   `yaml:"enabled"`
+		DefaultArch string `yaml:"default_arch"`
+	} `yaml:"multi_arch"`
 }
 
 type RuntimeConfig struct {

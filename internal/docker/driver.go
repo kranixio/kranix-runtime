@@ -11,12 +11,17 @@ import (
 	"github.com/docker/docker/client"
 	kraneTypes "github.com/kranix-io/kranix-packages/types"
 	"github.com/kranix-io/kranix-runtime/config"
+	"github.com/kranix-io/kranix-runtime/internal/arch"
+	"github.com/kranix-io/kranix-runtime/internal/bandwidth"
+	"github.com/kranix-io/kranix-runtime/internal/checkpoint"
 	"github.com/kranix-io/kranix-runtime/internal/gpu"
 )
 
 type Driver struct {
-	cli *client.Client
-	cfg *config.Config
+	cli         *client.Client
+	cfg         *config.Config
+	checkpoints *checkpoint.Store
+	volMgr      *DockerVolumeManager
 }
 
 func New(cfg *config.Config) (kraneTypes.RuntimeDriver, error) {
@@ -28,13 +33,21 @@ func New(cfg *config.Config) (kraneTypes.RuntimeDriver, error) {
 		return nil, fmt.Errorf("failed to create Docker client: %w", err)
 	}
 
-	return &Driver{
-		cli: cli,
-		cfg: cfg,
-	}, nil
+	d := &Driver{
+		cli:         cli,
+		cfg:         cfg,
+		checkpoints: checkpoint.NewStore(),
+	}
+	d.volMgr = NewDockerVolumeManager(d)
+	return d, nil
 }
 
 func (d *Driver) Deploy(ctx context.Context, spec *kraneTypes.WorkloadSpec) (*kraneTypes.WorkloadStatus, error) {
+	arch.ApplyArchitectureScheduling(spec)
+	if _, err := d.volMgr.Provision(ctx, spec); err != nil {
+		return nil, err
+	}
+
 	// Pull image
 	if err := d.pullImage(ctx, spec.Image); err != nil {
 		return nil, fmt.Errorf("failed to pull image: %w", err)
@@ -47,8 +60,9 @@ func (d *Driver) Deploy(ctx context.Context, spec *kraneTypes.WorkloadSpec) (*kr
 	}
 
 	containerConfig := &container.Config{
-		Image: spec.Image,
-		Env:   env,
+		Image:  spec.Image,
+		Env:    env,
+		Labels: bandwidth.ApplyDockerLabels(spec),
 	}
 
 	if spec.Command != "" {
@@ -59,6 +73,7 @@ func (d *Driver) Deploy(ctx context.Context, spec *kraneTypes.WorkloadSpec) (*kr
 		RestartPolicy: container.RestartPolicy{
 			Name: "unless-stopped",
 		},
+		Binds: d.volMgr.Binds(spec),
 	}
 
 	// Add GPU device requests if specified
@@ -96,6 +111,11 @@ func (d *Driver) Destroy(ctx context.Context, workloadID string) error {
 		Force: true,
 	}); err != nil {
 		return fmt.Errorf("failed to remove container: %w", err)
+	}
+	if d.cfg.Volumes.AutoCleanupOnDestroy {
+		if err := d.volMgr.CleanupByWorkload(ctx, workloadID); err != nil {
+			return fmt.Errorf("cleanup volumes: %w", err)
+		}
 	}
 	return nil
 }

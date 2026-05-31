@@ -14,14 +14,18 @@ import (
 
 	"github.com/kranix-io/kranix-packages/types"
 	"github.com/kranix-io/kranix-runtime/config"
+	"github.com/kranix-io/kranix-runtime/internal/checkpoint"
 	"github.com/kranix-io/kranix-runtime/internal/health"
+	"github.com/kranix-io/kranix-runtime/internal/volume"
 )
 
 type Driver struct {
-	clientset *kubernetes.Clientset
-	cfg       *config.Config
-	namespace string
-	tracker   *health.BackendTracker
+	clientset   *kubernetes.Clientset
+	cfg         *config.Config
+	namespace   string
+	tracker     *health.BackendTracker
+	checkpoints *checkpoint.Store
+	volMgr      *volume.K8sManager
 }
 
 func New(cfg *config.Config) (types.RuntimeDriver, error) {
@@ -59,10 +63,12 @@ func New(cfg *config.Config) (types.RuntimeDriver, error) {
 	}
 
 	return &Driver{
-		clientset: clientset,
-		cfg:       cfg,
-		namespace: namespace,
-		tracker:   health.NewBackendTracker(5*time.Minute, 100),
+		clientset:   clientset,
+		cfg:         cfg,
+		namespace:   namespace,
+		tracker:     health.NewBackendTracker(5*time.Minute, 100),
+		checkpoints: checkpoint.NewStore(),
+		volMgr:      volume.NewK8sManager(clientset, namespace),
 	}, nil
 }
 
@@ -86,9 +92,18 @@ func (d *Driver) Destroy(ctx context.Context, workloadID string) error {
 	namespace := d.namespace
 	err := d.deleteCronJob(ctx, workloadID, namespace)
 	if err == nil || !apierrors.IsNotFound(err) {
+		if err == nil && d.cfg.Volumes.AutoCleanupOnDestroy {
+			_ = d.volMgr.CleanupByWorkload(ctx, workloadID, namespace)
+		}
 		return err
 	}
-	return d.deleteDeployment(ctx, workloadID)
+	if destroyErr := d.deleteDeployment(ctx, workloadID); destroyErr != nil {
+		return destroyErr
+	}
+	if d.cfg.Volumes.AutoCleanupOnDestroy {
+		return d.volMgr.CleanupByWorkload(ctx, workloadID, namespace)
+	}
+	return nil
 }
 
 func (d *Driver) Restart(ctx context.Context, workloadID string) error {

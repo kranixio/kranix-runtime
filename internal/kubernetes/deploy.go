@@ -9,12 +9,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kranix-io/kranix-packages/types"
+	"github.com/kranix-io/kranix-runtime/internal/bandwidth"
+	"github.com/kranix-io/kranix-runtime/internal/volume"
 )
 
 func (d *Driver) createDeployment(ctx context.Context, spec *types.WorkloadSpec) (*appsv1.Deployment, error) {
 	// Create namespace if needed
 	if err := d.ensureNamespace(ctx, spec.Namespace); err != nil {
 		return nil, fmt.Errorf("failed to ensure namespace: %w", err)
+	}
+	if _, err := d.ProvisionVolumes(ctx, spec); err != nil {
+		return nil, err
 	}
 
 	namespace := spec.Namespace
@@ -26,11 +31,19 @@ func (d *Driver) createDeployment(ctx context.Context, spec *types.WorkloadSpec)
 	if err != nil {
 		return nil, err
 	}
+	vols, mounts := volume.PodVolumes(spec)
+	podSpec.Volumes = append(podSpec.Volumes, vols...)
+	if len(mounts) > 0 && len(podSpec.Containers) > 0 {
+		podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, mounts...)
+	}
 
 	podLabels := mergeWorkloadLabels(spec, map[string]string{
 		"app":        spec.Name,
 		"managed-by": "kranix",
 	})
+
+	podMeta := metav1.ObjectMeta{Labels: podLabels}
+	bandwidth.ApplyPodAnnotations(&podMeta, spec)
 
 	// Create deployment
 	deployment := &appsv1.Deployment{
@@ -47,10 +60,8 @@ func (d *Driver) createDeployment(ctx context.Context, spec *types.WorkloadSpec)
 				},
 			},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: podLabels,
-				},
-				Spec: podSpec,
+				ObjectMeta: podMeta,
+				Spec:       podSpec,
 			},
 		},
 	}

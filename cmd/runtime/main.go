@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/kranix-io/kranix-runtime/config"
+	"github.com/kranix-io/kranix-runtime/internal/plugin"
 	"github.com/kranix-io/kranix-runtime/internal/registry"
 	"google.golang.org/grpc"
 )
@@ -24,6 +25,13 @@ func main() {
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Initialize plugin manager (built-ins + config-enabled custom backends)
+	pm := plugin.Default()
+	pm.RegisterBuiltins()
+	if err := pm.LoadFromConfig(cfg); err != nil {
+		log.Fatalf("Failed to load runtime plugins: %v", err)
 	}
 
 	// Get the configured runtime driver

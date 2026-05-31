@@ -66,5 +66,22 @@ node_ops:
     default_grace_period_seconds: 30
     ignore_daemonsets: true
   multi_arch:
-    enabled: true                 # Route workloads using scheduling.architecture / image hints
+    enabled: true
     default_arch: "amd64"
+
+plugins:
+  enabled: true
+  allow: []                       # add {name, module, enabled: true} for custom backends
+
+checkpoint:
+  enabled: true
+
+bandwidth:
+  enabled: true
+  default_egress_mbit: "100"
+
+volumes:
+  enabled: true
+  default_storage_class: ""
+  default_size: "1Gi"
+  auto_cleanup_on_destroy: true

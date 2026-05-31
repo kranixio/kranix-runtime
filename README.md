@@ -17,6 +17,10 @@
 - **Runtime health scoring** — scores each backend and node 0–100 from latency and error rate
 - **Automatic node draining** — cordons nodes and evicts workloads before maintenance
 - **Multi-arch image support** — routes ARM vs x86 workloads to correct nodes via `kubernetes.io/arch`
+- **Container checkpoint & restore** — pause/resume Docker containers or scale Kubernetes deployments to zero and back
+- **Network bandwidth throttling** — per-workload egress/ingress limits via pod annotations (Kubernetes CNI) or Docker labels
+- **Volume lifecycle management** — auto-create PVCs/Docker volumes on deploy, attach mounts, optional cleanup on destroy
+- **Runtime plugin system** — register custom backends via `plugin.Register()` without forking the repo
 
 ---
 
@@ -56,6 +60,10 @@ See **`internal/kubernetes/scheduling.go`**, **`networkpolicy.go`**, **`cronjob.
 | **Health scoring** | Backends tracked via **`internal/health/`** — latency + error rate → score 0–100. Kubernetes nodes scored from Ready/MemoryPressure/DiskPressure conditions. |
 | **Node draining** | **`NodeOperations.DrainNode`** cordons the node, applies **`kranix.io/drain`** taint, and evicts non-DaemonSet pods with configurable grace period. |
 | **Multi-arch routing** | **`scheduling.architecture`** or image tag hints (`arm64`, `amd64`) inject **`kubernetes.io/arch`** nodeSelector + required node affinity. Docker pulls use platform-specific image pulls. |
+| **Checkpoint / restore** | **`RuntimeExtendedOperations.CheckpointWorkload`** — Docker pauses the container; Kubernetes scales the Deployment to **0** replicas. **`RestoreWorkload`** resumes. Metadata tracked in **`internal/checkpoint/`**. |
+| **Bandwidth throttling** | **`spec.networkBandwidth`** with **`enabled: true`** sets **`kubernetes.io/egress-bandwidth`** / **`ingress-bandwidth`** pod annotations (requires CNI bandwidth plugin) or Docker labels **`kranix.io/egress-bandwidth`**. |
+| **Volume lifecycle** | **`spec.volumes[]`** auto-provisions PVCs (K8s) or named volumes (Docker), mounts at **`mountPath`**, and optionally deletes on destroy when **`autoCleanup: true`** or **`volumes.auto_cleanup_on_destroy`** is set. |
+| **Runtime plugins** | Custom backends register via **`plugin.Register(Descriptor{...})`** in **`init()`**; enable in **`plugins.allow`** config. Built-ins: docker, kubernetes, podman, compose, remote. |
 
 ---
 
@@ -95,6 +103,52 @@ type NodeOperations interface {
 
 Retrieve via `registry.GetNodeOperations("kubernetes", cfg)`.
 
+Docker and Kubernetes drivers also implement **`types.RuntimeExtendedOperations`** for checkpoint, volume, and bandwidth-aware deploy:
+
+```go
+type RuntimeExtendedOperations interface {
+    CheckpointWorkload(ctx context.Context, req CheckpointRequest) (*CheckpointResult, error)
+    RestoreWorkload(ctx context.Context, req RestoreRequest) (*RestoreResult, error)
+    ListCheckpoints(ctx context.Context, workloadID, namespace string) ([]CheckpointResult, error)
+    ProvisionVolumes(ctx context.Context, spec *WorkloadSpec) (*VolumeLifecycleResult, error)
+    CleanupVolumes(ctx context.Context, spec *WorkloadSpec) error
+}
+```
+
+Retrieve via `registry.GetExtendedOperations("kubernetes", cfg)` (or `"docker"`).
+
+**Workload spec fields** (in `kranix-packages/types/workload.go`):
+
+```yaml
+volumes:
+  - name: data
+    size: 10Gi
+    storageClass: gp3
+    mountPath: /data
+    autoCleanup: true
+networkBandwidth:
+  enabled: true
+  egressLimit: 10Mbit
+  ingressLimit: 5Mbit
+```
+
+**Custom backend plugin** (compile-time registration):
+
+```go
+import "github.com/kranix-io/kranix-runtime/internal/plugin"
+
+func init() {
+    plugin.Default().Register(plugin.Descriptor{
+        Name:        "my-backend",
+        Version:     "1.0.0",
+        Description: "Custom cluster backend",
+        Factory:     mybackend.New,
+    })
+}
+```
+
+Enable in `config/config.yaml` under **`plugins.allow`**.
+
 ---
 
 ## Project structure
@@ -108,6 +162,12 @@ kranix-runtime/
 │   │   ├── deploy.go
 │   │   ├── logs.go
 │   │   └── image.go
+│   ├── health/                  # Backend/node health scoring
+│   ├── arch/                    # Multi-arch scheduling helpers
+│   ├── checkpoint/              # In-memory checkpoint metadata store
+│   ├── bandwidth/               # Egress/ingress limit annotations and labels
+│   ├── volume/                  # PVC and Docker volume lifecycle
+│   ├── plugin/                  # Runtime backend plugin registry
 │   ├── kubernetes/              # Kubernetes driver (Deployment or CronJob)
 │   │   ├── driver.go
 │   │   ├── deploy.go
@@ -223,11 +283,64 @@ edge_agent:
   port: 50052                     # gRPC port for edge agent
   heartbeat_interval: "30s"       # Heartbeat interval to control plane
   auth_token: ""                  # Authentication token for control plane
+
+plugins:
+  enabled: true
+  allow: []                       # {name, module, enabled: true} for custom backends
+
+checkpoint:
+  enabled: true
+
+bandwidth:
+  enabled: true
+  default_egress_mbit: "100"
+
+volumes:
+  enabled: true
+  default_storage_class: ""
+  default_size: "1Gi"
+  auto_cleanup_on_destroy: true
+
+node_ops:
+  health_scoring:
+    enabled: true
+    latency_window: "5m"
+  drain:
+    enabled: true
+    default_grace_period_seconds: 30
+  multi_arch:
+    enabled: true
+    default_arch: "amd64"
 ```
 
 ---
 
 ## New Features
+
+### Checkpoint, restore, bandwidth, volumes, and plugins
+
+**Checkpoint / restore** — pause running containers without deleting state:
+
+```bash
+# Via kranix-api (proxied to core → runtime when wired)
+curl -X POST http://localhost:8080/api/v1/workloads/my-app/checkpoint
+curl -X POST http://localhost:8080/api/v1/workloads/my-app/restore \
+  -H 'Content-Type: application/json' \
+  -d '{"checkpointId":"ckpt-..."}'
+curl http://localhost:8080/api/v1/workloads/my-app/checkpoints
+```
+
+**Bandwidth throttling** — set `networkBandwidth.enabled: true` and limits on the workload spec; Kubernetes requires a CNI that honors bandwidth annotations.
+
+**Volume lifecycle** — declare `volumes[]` on deploy; PVCs/volumes are created before the pod/container starts. Set `autoCleanup: true` or `volumes.auto_cleanup_on_destroy: true` to remove on destroy.
+
+**Runtime plugins** — list registered backends:
+
+```bash
+curl http://localhost:8080/api/v1/runtime/plugins
+```
+
+Register custom backends with `plugin.Register()` and enable them in config — no fork required.
 
 ### GPU Workload Scheduling
 
